@@ -1,0 +1,14 @@
+# Default: normalise text to LF in the repo.
+* text=auto
+
+# Windows batch must keep CRLF or cmd.exe can mis-parse labels and goto.
+*.bat           text eol=crlf
+# The POSIX launcher must stay LF even if checked out on Windows.
+gradlew         text eol=lf
+*.sh            text eol=lf
+
+# Never touch these.
+*.jar           binary
+*.apk           binary
+*.so            binary
+*.png           binary

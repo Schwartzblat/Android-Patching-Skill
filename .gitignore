@@ -1,0 +1,5 @@
+# Skill repo hygiene. Note: the .gitignore files under templates/patcher/ are
+# shipped content for generated projects -- they are tracked, not rules for you.
+__pycache__/
+*.pyc
+.DS_Store

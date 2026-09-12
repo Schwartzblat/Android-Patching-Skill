@@ -1,0 +1,3 @@
+# Pinned to a minor: ExternalModule's second argument changed meaning between
+# stitch releases (raw smali invoke line -> provider FQN). Verified against 1.1.2.
+stitch~=1.1.2

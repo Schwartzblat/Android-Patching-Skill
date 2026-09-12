@@ -1,0 +1,56 @@
+// Stage 3 probe -- confirm a candidate before committing to a hook.
+//
+//   frida -U -f {{APP_PACKAGE}} -l script.js
+//   frida -U -n {{APP_PACKAGE}} -l script.js      # already running
+//
+// Answers three questions the smali cannot:
+//   1. Is this method actually called during the flow you care about?
+//   2. What does it really return?
+//   3. Which overload runs?
+//
+// Placeholders: {{TARGET_CLASS}} {{TARGET_METHOD}} {{APP_PACKAGE}}
+
+Java.perform(function () {
+    var TARGET_CLASS = '{{TARGET_CLASS}}';
+    var TARGET_METHOD = '{{TARGET_METHOD}}';
+
+    function describe(v) {
+        if (v === null || v === undefined) return String(v);
+        try {
+            if (Array.isArray(v)) return '[' + v.map(describe).join(', ') + ']';
+            return v.toString();
+        } catch (e) {
+            return '<' + typeof v + '>';
+        }
+    }
+
+    var clazz;
+    try {
+        clazz = Java.use(TARGET_CLASS);
+    } catch (e) {
+        console.log('[!] class not loaded: ' + TARGET_CLASS);
+        console.log('    It may live in a dex loaded later. Re-run with -n after');
+        console.log('    the relevant screen is open, or search for it:');
+        console.log("    Java.enumerateLoadedClasses({onMatch: function(n){ if (n.indexOf('keyword')>=0) console.log(n); }, onComplete: function(){}});");
+        return;
+    }
+
+    var overloads = clazz[TARGET_METHOD].overloads;
+    console.log('[+] ' + TARGET_CLASS + '.' + TARGET_METHOD + ' -- ' + overloads.length + ' overload(s)');
+
+    overloads.forEach(function (ovl, i) {
+        var sig = ovl.argumentTypes.map(function (t) { return t.className; }).join(', ');
+        console.log('    [' + i + '] (' + sig + ') -> ' + ovl.returnType.className);
+        ovl.implementation = function () {
+            var args = Array.prototype.slice.call(arguments);
+            console.log('\n[' + i + '] ' + TARGET_METHOD + '(' + args.map(describe).join(', ') + ')');
+            var ret = ovl.apply(this, args);
+            console.log('[' + i + '] -> ' + describe(ret));
+            // Uncomment to check the patch is worth making before writing it:
+            // return true;
+            return ret;
+        };
+    });
+
+    console.log('[+] Probe installed. Exercise the feature now.');
+});

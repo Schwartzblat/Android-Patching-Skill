@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Intentionally minimal. This module's manifest is discarded; stitch
+         injects only its dex and jni libs into the target APK. The provider
+         that starts the patch is added to the TARGET app's manifest at patch
+         time by stitch (patcher.patch_manifest), not declared here. -->
+    <application tools:ignore="MissingApplicationIcon" />
+
+</manifest>
