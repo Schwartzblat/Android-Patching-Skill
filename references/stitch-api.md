@@ -3,6 +3,10 @@
 Python library that injects a compiled Java module into an existing APK. Read
 this when wiring `main.py` or debugging what the patcher did to the APK.
 
+Describes **stitch 1.3.0**, which added the manifest merge, asset injection and
+module resources, and scoped the provider authority to the target's package.
+`pip install -U stitch` if a patcher still behaves like 1.1.x.
+
 ## Entry point
 
 ```python
@@ -76,7 +80,7 @@ manifest that does nothing. Do not copy that pattern.
    bytes in place.
 6. **`compile_apk`** — apktool `build`, after appending `so` to
    `doNotCompress` in `apktool.yml`. Retries once on failure.
-7. **`inject_module_files`** (renamed from `inject_dex_and_libs`) —
+7. **`inject_module_files`** (`inject_dex_and_libs` before 1.3.0) —
    rewrites the output zip with four kinds of entry from the module APK:
    - **dex** appended as `classes<N+1>.dex` (DEFLATED, where `N` is the
      target's highest existing index);
