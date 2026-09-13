@@ -93,13 +93,40 @@ existing call sites. Hook its caller, or a larger method on the same path.
 ## Provider not firing
 
 - **Check it landed.** `apktool d -f -s output.apk -o /tmp/chk && grep -i provider /tmp/chk/AndroidManifest.xml`
-- **Authority collision.** `android:authorities` is set to the provider FQN, and
-  authorities must be unique per device. If another patched app already
-  registered `com.smali_generator.InitProviderX`, install fails with
-  `INSTALL_FAILED_CONFLICTING_PROVIDER`. Rescaffold with a distinct name, or
-  uninstall the other app.
+- **`INSTALL_FAILED_CONFLICTING_PROVIDER`.** Authorities are unique device-wide.
+  stitch scopes them to the target's package
+  (`com.tranzmate.com.smali_generator.InitProviderMoovit`), so this only
+  survives in two cases: the device still carries an app patched by an older
+  stitch, which claimed the bare provider FQN; or one patch passes two
+  `ExternalModule`s with the same provider class. Repatch the other app, or
+  give the second module its own provider name. The error names the package
+  holding the authority — read it before uninstalling anything.
 - **Dex not injected.** `unzip -l output.apk | grep classes` — the module's dex
   should be the highest-numbered `classes<N>.dex`.
+
+## The module's manifest, resources and assets
+
+- **`ValueError: ... has an intent-filter but no android:exported`.** stitch
+  refuses to guess: Android 12+ will not install such a component. Add
+  `android:exported` in the module's `AndroidManifest.xml`.
+- **`[-] Dropping label="@7f..."` in the patch log.** A manifest attribute
+  pointed at the module's resource table, which the target's manifest cannot
+  address. Expected, not a failure — set the value from code. See
+  `module-ui.md`.
+- **A component in the module's manifest never appears in the output.** It was
+  deduplicated because the target already declares the same tag +
+  `android:name`, or a provider with the same authority. Check with
+  `apktool d -f -s output.apk -o /tmp/chk`.
+- **The screen inflates the wrong layout, or `Resources$NotFoundException`.**
+  The module's `R` ids were resolved against the target's table. Inflate through
+  `StitchResources.wrap(context)` — never `LayoutInflater.from(activity)` alone.
+- **`assets/stitch/<pkg>.apk` missing from the output.** Either
+  `inject_module_resources=False`, or the module built no `resources.arsc`.
+- **Two modules sharing an `applicationId`** land on the same
+  `assets/stitch/<pkg>.apk` and the last one silently wins. Give each module its
+  own package.
+- **An asset of the target disappeared.** The module shipped a file at the same
+  path and replaced it; the patch log prints every replacement.
 
 ## Build and packaging failures
 

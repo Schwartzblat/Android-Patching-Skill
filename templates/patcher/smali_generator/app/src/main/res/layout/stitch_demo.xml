@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Example layout for a screen the patch adds to the target app. Delete it if
+     the patch has no UI; see references/module-ui.md for the activity that
+     inflates it. Keep to explicit values and @android: references, because
+     ?attr/... resolves against the target app's theme, not this module's. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="24dp">
+
+    <TextView
+        android:id="@+id/stitch_demo_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:textSize="18sp"
+        android:text="Patched" />
+
+    <Button
+        android:id="@+id/stitch_demo_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Press me" />
+
+</LinearLayout>

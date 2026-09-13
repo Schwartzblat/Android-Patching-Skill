@@ -29,8 +29,10 @@ APK ──apktool──> smali ──finders──> artifactory {KEY: value}
                                          ▼
                               gradlew assembleRelease
                                          │
-                        dex + libarthooks.so injected into the APK
-                        <provider> added to the manifest, initOrder=MAX
+          dex + libarthooks.so + assets + the module's resource table
+                            injected into the APK
+          <provider> added to the manifest (initOrder=MAX), and the
+                     module's own manifest merged in
                                          ▼
                                   signed output APK
 ```
@@ -144,11 +146,15 @@ hook and a signature. Skip silently if there is no device.
 scripts/new-patcher.py Moovit ~/projects/MoovitPatcher --package com.tranzmate
 ```
 
-`<Name>` becomes the provider class `com.smali_generator.InitProvider<Name>`,
-which doubles as the manifest authority. Authorities must be unique per device,
-so two patchers must never share a name.
+`<Name>` becomes the provider class `com.smali_generator.InitProvider<Name>`.
+stitch scopes the manifest authority to the target's package
+(`<target package>.<provider FQN>`), so patchers for two different apps may
+share a name — keep it per-project anyway, since it is what tells your classes
+apart in a logcat shared with every other patched app on the device.
 
-The fresh project builds and passes the gate as-is.
+The fresh project builds and passes the gate as-is. It also carries
+`StitchResources.java` and `res/layout/stitch_demo.xml`, inert until the patch
+needs UI; delete them if it never does.
 
 ### 5. Write the finder
 
@@ -169,6 +175,11 @@ it in `InitProvider<Name>.hooks`.
 
 The rule that breaks everything: **a replacement must be `static`, and an
 instance method's replacement takes a leading `Object thiz`.**
+
+If the patch needs a screen rather than only a hook, read
+`references/module-ui.md`. Declare the `<activity>` in the *module's*
+`AndroidManifest.xml` — stitch merges it into the target's — and inflate the
+layout through `StitchResources`, never with the target's own resources.
 
 ### 7. Validate — do not skip
 
@@ -214,6 +225,7 @@ ask, `adb logcat -s PATCH ArtHooks` is the filter.
 | `references/arthooks-api.md` | writing any replacement method (stage 6) |
 | `references/signatures.md` | writing any finder (stage 5) |
 | `references/hook-patterns.md` | writing any hook (stage 6); copy-paste finder/hook pair |
+| `references/module-ui.md` | the patch adds a screen, or needs its own layouts, assets or resources |
 | `references/troubleshooting.md` | anything fails, or the patch runs but does nothing |
 
 ## Rules

@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Intentionally minimal. This module's manifest is discarded; stitch
-         injects only its dex and jni libs into the target APK. The provider
-         that starts the patch is added to the TARGET app's manifest at patch
-         time by stitch (patcher.patch_manifest), not declared here. -->
+    <!-- stitch MERGES this manifest into the target app's at patch time, so
+         declare components the patch adds (activity/service/receiver) and any
+         <uses-permission> here, exactly once. See references/module-ui.md.
+
+         Do NOT declare the provider that starts the patch: stitch adds that
+         itself, with the authority scoped to the target's package.
+
+         Attributes that point at this module's resources (android:label,
+         android:icon) are dropped with a warning, because the target's
+         manifest is read against the TARGET's resource table. Set them from
+         code. -->
     <application tools:ignore="MissingApplicationIcon" />
 
 </manifest>

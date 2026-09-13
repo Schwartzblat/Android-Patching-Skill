@@ -20,6 +20,8 @@ with Stitch(
         google_api_key=None,
         should_sign=True,
         extra_artifacts={},
+        merge_module_manifests=True,   # merge the module's AndroidManifest.xml
+        inject_module_resources=True,  # ship the module's resources.arsc
 ) as stitch:
     stitch.patch()
 ```
@@ -31,12 +33,14 @@ with Stitch(
 | `artifactory_list` | `SimpleArtifactoryFinder` instances. See `signatures.md`. |
 | `extra_artifacts` | `dict` merged over the finders' output. Hard-codes a `{{KEY}}` without writing a finder. |
 | `should_sign` | False leaves `output_apk` unsigned. |
+| `merge_module_manifests` | Default True. False registers only the `<provider>` and ignores everything else in the module's manifest. |
+| `inject_module_resources` | Default True. False skips `assets/stitch/<pkg>.apk`, so the module has no resources at runtime. |
 
 ### `ExternalModule(module_path, invoke_line)`
 
-Despite the field name, in stitch 1.1.x `invoke_line` is **the fully-qualified
-provider class name**, and it is passed straight to `patch_manifest` as
-`android:name` / `android:authorities`.
+Despite the field name, `invoke_line` is **the fully-qualified provider class
+name**. It becomes the provider's `android:name`; the `android:authorities` is
+that name prefixed with the target's package (see `patch_manifest` below).
 
 ```python
 ExternalModule(Path('./smali_generator'), 'com.smali_generator.InitProviderMyApp')   # correct
@@ -60,22 +64,92 @@ manifest that does nothing. Do not copy that pattern.
    `<temp>/smali_generator`, runs `patch_artifacts`, then
    `./gradlew assembleRelease`, and expects `<module>/smali_generator.apk` to
    exist afterwards (`SMALI_GENERATOR_OUTPUT_PATH`).
-4. **`patch_manifest`** — one `<provider>` per module in the target's
-   `AndroidManifest.xml`:
-   `name` and `authorities` both the provider FQN, `exported=false`,
-   `initOrder=2147483647`. Binary AXML via `pyaxml`, plain XML via lxml.
+4. **`patch_manifest`** — two things to the target's `AndroidManifest.xml`.
+   Binary AXML via `pyaxml`, plain XML via lxml.
+   - One `<provider>` per module: `name` = the provider FQN, `exported=false`,
+     `initOrder=2147483647`, and `authorities` = `<target package>.<provider FQN>`
+     (e.g. `com.tranzmate.com.smali_generator.InitProviderMoovit`).
+   - Then the module's own manifest is merged in — see *The module's manifest*
+     below.
 5. **`patch_google_api_key`** *(only if `google_api_key` is set)* — reads the
    original value out of `resources.arsc` with `ARSCParser` and replaces those
    bytes in place.
 6. **`compile_apk`** — apktool `build`, after appending `so` to
    `doNotCompress` in `apktool.yml`. Retries once on failure.
-7. **`inject_dex_and_libs`** — rewrites the output zip:
-   the module's dex files are appended as `classes<N+1>.dex` (DEFLATED, where
-   `N` is the target's highest existing index) and its `lib/<arch>/*` entries
-   are added **ZIP_STORED**, uncompressed, because ART maps `.so` files
-   directly out of the APK.
+7. **`inject_module_files`** (renamed from `inject_dex_and_libs`) —
+   rewrites the output zip with four kinds of entry from the module APK:
+   - **dex** appended as `classes<N+1>.dex` (DEFLATED, where `N` is the
+     target's highest existing index);
+   - **`lib/<arch>/*`** added **ZIP_STORED**, uncompressed, because ART maps
+     `.so` files directly out of the APK;
+   - **`assets/*`**, each keeping the compression AGP gave it. A path the
+     target already has is replaced by the module's copy, and the replacement
+     is printed;
+   - **`assets/stitch/<module package>.apk`**, the module's resource table on
+     its own — see *Module resources* below.
 8. **`sign_apk`** — uber-apk-signer over the output and every split.
 9. Bundles are repacked into a zip of signed APKs at `output_apk`.
+
+## The module's manifest
+
+`patch_manifest` merges the module's compiled `AndroidManifest.xml` into the
+target's, so a component is declared once — in the Gradle module, where it has
+to be declared anyway to compile — rather than twice.
+
+| Carried over | Never touched |
+|---|---|
+| `<application>` children: `activity`, `activity-alias`, `service`, `receiver`, `provider` | `<application>` and `<manifest>` attributes |
+| root: `uses-permission`, `uses-permission-sdk-23`, `uses-feature`, `queries` | `<uses-sdk>` — the target's min/target SDK stand |
+
+Four things happen on the way across, and each is a failure you would otherwise
+debug on a device:
+
+- **`.Name` is expanded** against the module's package. Left relative it is a
+  `ClassNotFoundException` in the target.
+- **Attributes pointing at the module's resources are dropped**, with a warning.
+  The target's manifest is read against the *target's* `resources.arsc`, so
+  `android:label="@string/app_name"` would resolve to something unrelated.
+  Framework references (`@android:style/...`) are kept. Set such attributes from
+  code instead.
+- **`tools:` attributes are stripped** — build-time only, and the target's
+  manifest has no `tools` namespace.
+- **A component already declared in the target is skipped**, matched on tag +
+  `android:name`, or on a colliding provider `authorities`.
+
+A component with an `<intent-filter>` and no explicit `android:exported`
+**raises** rather than being guessed at — Android 12+ refuses to install it.
+Declare `android:exported` in the module's manifest.
+
+## Assets
+
+Everything under the module's `src/main/assets/` lands in the patched APK, each
+file keeping the compression AGP chose. Read them the usual way; the target's
+package is what `getAssets()` belongs to, so no special handling is needed:
+
+```java
+InputStream in = context.getAssets().open("my_data/config.json");
+```
+
+A path the target already uses is **replaced** by the module's copy — useful
+for swapping an asset of the app being patched, and printed so it is never
+silent. Across modules, the last `ExternalModule` wins.
+
+## Module resources
+
+`res/` cannot be merged into the target's table: both are numbered from `0x7f`,
+so the same id means different things in each. In a patched app the module's
+`R.layout.x` (say `0x7f020000`) is whatever the target happens to have at that
+id — `setContentView` inflates the wrong thing rather than failing.
+
+So stitch ships the module's table as a **separate APK** at
+`assets/stitch/<module package>.apk` (dex, libs, assets and signatures
+stripped; `resources.arsc` left uncompressed so it can be mmap'd), and the
+module loads it at runtime into a `Resources` of its own. Because that
+`Resources` holds only the module's table, its generated `R` constants mean
+exactly what they meant at compile time.
+
+`StitchResources` in the scaffold does this. See `module-ui.md` for the whole
+recipe, including the non-SDK-API caveat.
 
 ## `patch_artifacts` — the substitution
 

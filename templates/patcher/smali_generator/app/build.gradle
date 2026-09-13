@@ -8,9 +8,10 @@ android {
 
     defaultConfig {
         applicationId "com.smali_generator"
-        // This module is never installed on its own -- only its dex and its
-        // jni libs are injected into the target APK -- so these values are
-        // cosmetic. The target app's own manifest governs at runtime.
+        // This module is never installed on its own -- stitch injects its dex,
+        // jni libs, assets and resource table into the target APK -- so these
+        // values are cosmetic. The target app's own manifest governs at
+        // runtime, and its <uses-sdk> is never overwritten by this one.
         minSdk 33
         //noinspection ExpiredTargetSdkVersion
         targetSdk 36

@@ -4,10 +4,10 @@
     new-patcher.py Moovit ~/projects/MoovitPatcher --package com.moovit.app
 
 Copies templates/patcher, then renames the InitProvider class everywhere it is
-referenced. The provider's fully-qualified name doubles as its manifest
-authority, and Android requires authorities to be unique per device -- two
-patched apps sharing one provider name means the second install fails with
-INSTALL_FAILED_CONFLICTING_PROVIDER. That is why the name is per-project.
+referenced. stitch scopes the manifest authority to the target's package
+(<target package>.<provider FQN>), so two patchers for two different apps may
+share a provider name. Keep it per-project anyway: it is what distinguishes
+your classes in a logcat shared with every other patched app on the device.
 """
 import argparse
 import os
@@ -102,7 +102,8 @@ def main():
     provider = f'com.smali_generator.InitProvider{args.name}'
     print(f'[+] Created {out}')
     print(f'[+] Substituted placeholders in {touched} file(s)')
-    print(f'[+] Provider class / manifest authority: {provider}')
+    print(f'[+] Provider class: {provider}')
+    print('[+] Manifest authority: <target package>.' + provider)
     print(f'[+] Android SDK: {sdk if sdk else "NOT FOUND -- set sdk.dir in smali_generator/local.properties"}')
     print()
     print('    Next:')
