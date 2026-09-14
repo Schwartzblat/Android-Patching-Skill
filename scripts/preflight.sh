@@ -26,13 +26,20 @@ else
     fail "java" "not on PATH"
 fi
 
-# --- jadx, for reading decompiled Java in stage 2 ---
+# --- a reader for stage 2: asc preferred, jadx the fallback ---
 # Not required: stage 2 only needs a target class/method/signature, and that can
 # come from the user, the jadx GUI, or the jadx-mcp-server tools instead.
-if command -v jadx >/dev/null 2>&1; then
-    pass "jadx" "$(command -v jadx)"
+ASC_SKILL=${ASC_SKILL:-$HOME/.claude/skills/reversing-apks-with-asc}
+if command -v asc >/dev/null 2>&1; then
+    if [ -x "$ASC_SKILL/scripts/ascq" ]; then
+        pass "asc" "$(command -v asc) + reversing-apks-with-asc skill"
+    else
+        pass "asc" "$(command -v asc) -- skill not installed, see stage 2 for the commands"
+    fi
+elif command -v jadx >/dev/null 2>&1; then
+    pass "jadx" "$(command -v jadx) -- no asc, using the jadx fallback"
 else
-    warn "jadx" "not on PATH -- supply the target class/method yourself, or use the jadx GUI / MCP"
+    warn "reader" "no asc or jadx -- supply the target class/method yourself, or use the jadx GUI / MCP"
 fi
 
 # --- python 3.11+, which stitch requires ---

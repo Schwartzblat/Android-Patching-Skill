@@ -159,8 +159,8 @@ These still set `is_found`, so the gate covers them too.
 
 ## Workflow
 
-1. Find the target by reading decompiled Java (`jadx`), which is far easier
-   than reading smali.
+1. Find the target by reading decompiled Java (`asc` / `ascq`, or `jadx`),
+   which is far easier than reading smali.
 2. Open that class's `.smali` in `.patcher-work/<stem>/extracted/` and pick the
    anchors from what is actually there.
 3. Write the finder.

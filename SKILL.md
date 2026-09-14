@@ -69,8 +69,9 @@ scripts/preflight.sh                    # PYTHON=/path/to/venv/bin/python to ove
 Hard requirements: java 17+, Python 3.11+ with `stitch` importable, and an
 Android SDK. Everything else warns rather than fails:
 
-- **`jadx`** — only used to *read* the app in stage 2. Not needed when the user
-  supplies the target, or when you are using the jadx GUI / MCP tools.
+- **`asc`** — the preferred way to *read* the app in stage 2, with **`jadx`** as
+  the fallback. Neither is needed when the user supplies the target, or when you
+  are driving the jadx GUI / MCP tools.
 - **`adb`, `frida`** — stage 3 only.
 - **apktool** — never needed on PATH. stitch ships its own jar and the scripts
   use that one, so recon and the real patch cannot diverge on version.
@@ -95,10 +96,44 @@ stage 3.
 **If the user already named the target** — class, method, and ideally the
 signature — take it and skip straight to confirming it in the smali (below).
 Do not decompile to re-derive what you were handed. This is the common case
-when they have already done the reversing in jadx, Ghidra or Frida.
+when they have already done the reversing in asc, jadx, Ghidra or Frida.
 
 Otherwise, read decompiled Java rather than smali. Smali is the ground truth
 the finder matches against, but Java is what you reason in.
+
+Work backwards from a **string the app cannot rename**: a wire-format key, a
+log message, an analytics tag, an error string shown in the UI. Then find the
+method that gates the behaviour.
+
+**Prefer `asc` (Droid ASC) over jadx.** It queries the APK as a read-only
+database — any xref in ~0.2s, one class decompiled in 0.13s, no unpacking and no
+index to build first. If the `reversing-apks-with-asc` skill is installed,
+invoke it and let it drive this stage; it carries the methodology. Without it,
+these five commands cover stage 2:
+
+```bash
+asc-manifest ./app.apk --info                                     # package, version
+asc findrefs ./app.apk string "subscribed_skus" -o hits.txt >/dev/null 2>&1
+ascq outline ./app.apk 'Lcom/example/Foo;'                        # signatures only
+ascq method  ./app.apk 'Lcom/example/Foo;' isSubscribed           # one body
+asc-classes  ./app.apk --extends 'Lcom/example/Gate;'             # implementations
+```
+
+`asc` needs its helpers on PATH, and a cache that does not follow your CWD:
+
+```bash
+export PATH="$HOME/.claude/skills/reversing-apks-with-asc/scripts:$PATH"
+export ASCQ_CACHE="$PWD/.patcher-work/.asc-cache"      # must be absolute
+```
+
+**Every bare `asc` call takes `-o FILE >/dev/null 2>&1`**, then `wc -l FILE`
+before you read it — `asc` writes to stdout *even when you pass `-o`*, and one
+unredirected `getclass` on a large class is 120k tokens. The `ascq`,
+`asc-classes` and `asc-manifest` helpers are bounded by construction, so print
+those directly. A zero-result is usually an unescaped regex metacharacter
+(`Foo\$Bar`) or the wrong case, not a missing symbol.
+
+**Fallback, when `asc` is not on PATH** — jadx:
 
 ```bash
 jadx -d ./.patcher-work/<stem>/jadx --no-res ./app.apk     # slow, once
@@ -108,10 +143,6 @@ grep -rl "subscribed_skus" ./.patcher-work/<stem>/jadx/sources/
 If the `jadx-mcp-server` tools are live (the APK is open in the jadx GUI),
 prefer them — `search_classes_by_keyword`, `get_method_by_name`,
 `get_xrefs_to_method`, `get_smali_of_class` — instead of decompiling again.
-
-Work backwards from a **string the app cannot rename**: a wire-format key, a
-log message, an analytics tag, an error string shown in the UI. Then find the
-method that gates the behaviour.
 
 **Either way, finish this stage by confirming the target in the smali** — it is
 what the finder will match against, and a name that came from decompiled Java

@@ -26,9 +26,9 @@ git clone <this repo> ~/.claude/skills/android_patching
 ```
 
 Required: JDK 17+, Python 3.11+ with `pip install stitch`, and an Android SDK.
-`jadx` is recommended (reading decompiled Java), `adb` and `frida` are optional
-(confirming a target on a live device). apktool is not needed — stitch ships
-its own.
+`asc` (Droid ASC) is recommended for reading the app, with `jadx` as the
+fallback; `adb` and `frida` are optional (confirming a target on a live
+device). apktool is not needed — stitch ships its own.
 
 ## Use
 
