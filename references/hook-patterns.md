@@ -103,10 +103,12 @@ everything:
 static boolean is_premium(Object thiz, Object feature) { return true; }
 ```
 
-**Filter arguments, keep behaviour** — three-argument form with a backup:
+**Filter arguments, keep behaviour** — three-argument form with a backup. The
+backup is always `static native` with no body (see `arthooks-api.md`): a Java
+body gets inlined, and the backup silently returns its own dummy value.
 
 ```java
-static void set_flags_backup(Window thiz, int flags, int mask) { }
+static native void set_flags_backup(Window thiz, int flags, int mask);
 
 static void set_flags(Window thiz, int flags, int mask) {
     if ((flags & LayoutParams.FLAG_SECURE) != 0) {
@@ -120,6 +122,8 @@ static void set_flags(Window thiz, int flags, int mask) {
 **Inspect and rewrite a return value** — call the backup, mutate, return:
 
 ```java
+static native PackageInfo get_package_info_backup(PackageManager thiz, String pkg, int flags);
+
 static PackageInfo get_package_info(PackageManager thiz, String pkg, int flags) {
     PackageInfo info = get_package_info_backup(thiz, pkg, flags);
     if (info != null && pkg.equals("com.whatsapp")) {

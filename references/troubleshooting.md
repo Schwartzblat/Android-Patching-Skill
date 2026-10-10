@@ -23,6 +23,7 @@ Read the log top-down:
 | `NoSuchMethodException` | Finder found the class but the method name/sig is stale, or you used `getDeclaredMethod` on an inherited method. |
 | ArtHooks logs a native failure | See *wrong ABI* below. |
 | `hooked` logged but behaviour unchanged | Right method, wrong one for the job — or it was inlined. |
+| `hooked` logged, but the code after the backup call gets `null`/`false` | The backup has a Java body. See *the backup returns nothing* below. |
 
 ### A `{{PLACEHOLDER}}` survived into the build
 
@@ -77,7 +78,7 @@ public void load() throws Exception {
             MyHook.class.getDeclaredMethod("attach_backup", Object.class, Context.class));
 }
 
-static void attach_backup(Object thiz, Context c) { }
+static native void attach_backup(Object thiz, Context c);   // native: see arthooks-api.md
 
 static void attach_hook(Object thiz, Context c) {
     attach_backup(thiz, c);
@@ -85,10 +86,28 @@ static void attach_hook(Object thiz, Context c) {
 }
 ```
 
+### The backup returns nothing, or the original never runs
+
+A three-argument hook "works", but the code after the backup call sees `null`,
+`false` or a blank object, and the original's side effects never happen. The
+backup was declared with a Java body. dex2oat inlined that body into the
+replacement, so the entry-point swap never takes effect. Declare it
+`static native` with no body. ArtHooks logs `the backup for an instance method
+or constructor must be declared native` when it sees this, so grep the
+`ArtHooks` tag. To confirm in the build:
+
+```bash
+dexdump -l plain classes.dex | grep -A2 "name.*'_backup'" | grep access   # want 0x0108 (STATIC NATIVE)
+```
+
 ### The method was inlined
 
-A small, hot method the JIT already inlined keeps running its original body at
-existing call sites. Hook its caller, or a larger method on the same path.
+ArtHooks normally prevents this by switching off AOT code and marking each
+target `kAccCompileDontBother` (see `arthooks-api.md`, *AOT code and
+inlining*), so even a 3-instruction method hooks fine. If behaviour is still
+unchanged, read the `ArtHooks` warnings: `the target is on AOT code ...` means
+the defence did not apply. Then hook the target's caller, or a larger method on
+the same path.
 
 ## Provider not firing
 

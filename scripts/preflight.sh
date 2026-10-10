@@ -59,15 +59,20 @@ fi
 if "$PY" -c 'import stitch' >/dev/null 2>&1; then
     sinfo=$("$PY" - <<'PYEOF' 2>/dev/null
 import stitch, pathlib
-from stitch.common import APKTOOL_PATH, UBER_APK_SIGNER_PATH
+from stitch.common import APKTOOL_PATH
+# stitch 1.4 replaced the bundled uber-apk-signer jar with fastsigner.
+try:
+    from stitch.common import FASTSIGNER_PATH as SIGNER_PATH
+except ImportError:
+    from stitch.common import UBER_APK_SIGNER_PATH as SIGNER_PATH
 v = "?"
 try:
     from importlib.metadata import version
     v = version("stitch")
 except Exception:
     pass
-print(v, pathlib.Path(str(APKTOOL_PATH)).name, pathlib.Path(str(UBER_APK_SIGNER_PATH)).name,
-      pathlib.Path(str(APKTOOL_PATH)).exists(), pathlib.Path(str(UBER_APK_SIGNER_PATH)).exists())
+print(v, pathlib.Path(str(APKTOOL_PATH)).name, pathlib.Path(str(SIGNER_PATH)).name,
+      pathlib.Path(str(APKTOOL_PATH)).exists(), pathlib.Path(str(SIGNER_PATH)).exists())
 PYEOF
 )
     read -r sver apkt signer apkt_ok signer_ok <<<"$sinfo"

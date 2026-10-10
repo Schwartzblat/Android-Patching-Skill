@@ -207,6 +207,10 @@ it in `InitProvider<Name>.hooks`.
 The rule that breaks everything: **a replacement must be `static`, and an
 instance method's replacement takes a leading `Object thiz`.**
 
+Its twin, for the three-argument form: **a backup must be `static native` with
+no body.** A Java body, even `{ }`, gets inlined into the replacement, and the
+"original" call then silently returns the dummy value.
+
 If the patch needs a screen rather than only a hook, read
 `references/module-ui.md`. Declare the `<activity>` in the *module's*
 `AndroidManifest.xml` — stitch merges it into the target's — and inflate the

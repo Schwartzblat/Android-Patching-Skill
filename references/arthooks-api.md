@@ -4,6 +4,13 @@ Java method hooking by overwriting the target `art::ArtMethod`'s entry point.
 Gradle coordinate `com.github.Schwartzblat:ArtHooks` (jitpack), package
 `com.arthooks`.
 
+Verified against **1.1.0**: the API comes from `javap` on the AAR, and the
+behaviour from the diagnostic strings in `libarthooks.so` and from a real patch
+running on API 37. When the library is bumped, re-check with
+`javap -cp classes.jar com.arthooks.ArtHooks` and
+`unzip -p ArtHooks-*.aar jni/arm64-v8a/libarthooks.so | strings -n 30`. The
+native error text states its rules more precisely than any doc.
+
 ## API
 
 ```java
@@ -11,6 +18,11 @@ public static boolean    is_available();
 public static Executable find_function(Class<?> owner, String name, String signature);
 public static boolean    hook_function(Executable original, Executable replacement);
 public static boolean    hook_function(Executable original, Executable replacement, Executable backup);
+public static boolean    is_hooked(Executable original);
+public static boolean    unhook_function(Executable original);   // restores the original entry point
+public static boolean    is_aot_disabled();                      // see "AOT code and inlining"
+public static boolean    disable_aot();                          // run by the static initialiser
+public static final String KEEP_AOT_PROPERTY;                    // "arthooks.keep_aot"
 ```
 
 Targets are `Executable`, so `Method` and `Constructor` both work. Nothing
@@ -43,11 +55,20 @@ constructor hook that does not call through leaves a blank object.
 
 ## Backups
 
-The three-argument form points `backup` at the original's pre-hook body:
+The three-argument form points `backup` at the original's pre-hook body.
+
+**A backup must be declared `static native`, with no body.** A backup with a
+Java body (even an empty `{ }` or `return null;`) is small enough for dex2oat
+to inline into the replacement. The call to the backup then never goes through
+its entry point, so the swap is invisible: the backup silently returns its own
+dummy answer (`null`, `false`, nothing) instead of running the original. For a
+constructor that means a blank object. ArtHooks checks the backup's modifiers
+and logs this exact rule as an error under the `ArtHooks` tag. `native` is never
+linked, because the entry point is overwritten before anything calls it.
 
 ```java
-// Empty body. Its entry point is rewritten; only the signature matters.
-static void set_flags_hook_backup(Window thiz, int flags, int mask) { }
+// static native, no body: ArtHooks rewrites its entry point to the original.
+static native void set_flags_hook_backup(Window thiz, int flags, int mask);
 
 static void set_flags_hook(Window thiz, int flags, int mask) {
     if ((flags & LayoutParams.FLAG_SECURE) != 0) {
@@ -63,9 +84,12 @@ ArtHooks.hook_function(original,
         MyHook.class.getDeclaredMethod("set_flags_hook_backup", Window.class, int.class, int.class));
 ```
 
-The backup keeps its Java identity; only its entry point changes. Its body is
-never executed, so leave it empty (or `return null` / a dummy value to satisfy
-the compiler). Backup and replacement must have **identical** signatures.
+The backup keeps its Java identity; only its entry point changes. Backup and
+replacement must have **identical** signatures, both `static`, with the same
+leading `thiz` for an instance target. Use `native` for every backup, including
+a static target's: the error text names instance methods and constructors, but
+a static backup with a body is just as easy to inline. In the built module,
+`dexdump` should show it as `access : 0x0108 (STATIC NATIVE)`.
 
 Use the two-argument form when you are replacing behaviour outright
 (`return true`), and the three-argument form when you need the original's
@@ -108,13 +132,43 @@ implementors, and it is how you accidentally hook far more than you meant to.
 Smali writes descriptors in this exact form, so capture them verbatim from the
 `.method` line.
 
+## AOT code and inlining
+
+By default ArtHooks defends against inlining itself:
+
+- **The static initialiser calls `disable_aot()`**, unless the Java system
+  property `arthooks.keep_aot` (`KEEP_AOT_PROPERTY`) is `"true"`. ART stops
+  running the app's precompiled code and deoptimizes the boot image. A caller
+  that dex2oat compiled with the target inlined into it is never run again. The
+  log line is `ART will no longer run AOT code, and the boot image was
+  deoptimized; hooks now survive a speed/speed-profile build`.
+  `is_aot_disabled()` reports the outcome.
+- **Every hooked target gets `kAccCompileDontBother`** (`kAccCompileDontBother
+  set on ...`), so the JIT never compiles it and never inlines it into a caller
+  later.
+
+So a tiny target (a 3-instruction `OkHttpClient$Builder.build()`, a Kotlin
+companion factory) does hook reliably, provided ArtHooks loads before the
+target's class is linked. The injected provider is normally early enough. These
+warnings mean it was not, or the platform would not cooperate:
+
+| ArtHooks log | Meaning |
+|---|---|
+| `the target is on AOT code because ART linked its class before ArtHooks loaded` | Touch `com.arthooks.ArtHooks` earlier, or hook the caller instead |
+| `the target is on AOT code and ArtHooks did not stop ART using it` | `disable_aot()` failed or `arthooks.keep_aot` was set; inlined copies keep the old body |
+| `libart does not export what it takes to stop ART using AOT code` | This platform cannot be defended; hook a larger method on the same path |
+| `could not deoptimize the boot image` | A framework (boot-classpath) target can still miss calls made from inside the framework |
+| `static target ... still on the resolution stub ...; refusing to hook it` | The static target's class has not run its fixups. ArtHooks forces class init first, and this means that failed |
+
 ## Constraints
 
 - The replacement class must be loaded and initialised before hooking.
-- Hooks are process-wide and permanent for the process; there is no unhook.
-  A `Hook.unload()` in these projects is a logging stub.
-- Inlined methods cannot be hooked reliably. A tiny getter the JIT has already
-  inlined may keep running its original body at existing call sites.
+- Hooks are process-wide. `unhook_function` restores an original, but the
+  projects never need it, and `Hook.unload()` in these projects is a logging
+  stub.
+- Give each target its own replacement method. Sharing one replacement across
+  several originals is untested, and separate replacements cost nothing and make
+  the log say which target fired.
 - The `flag_probe_*` and `layout_probe_*` methods in `ArtHooks.java` exist to
   discover ART's `ArtMethod` layout at startup. Never rename, reorder or add
   methods between them.
